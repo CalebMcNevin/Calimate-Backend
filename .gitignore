@@ -35,7 +35,7 @@ data/
 *.bak
 
 # Air config
-.air.toml
+# .air.toml
 
 # Swaggar documentation
 docs/

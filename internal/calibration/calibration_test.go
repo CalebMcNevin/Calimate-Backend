@@ -21,7 +21,9 @@ func setupTestDB() *gorm.DB {
 	if err != nil {
 		panic("failed to connect database")
 	}
-	db.AutoMigrate(calibration.Models()...)
+	if err := db.AutoMigrate(calibration.Models()...); err != nil {
+		panic("failed to migrate database")
+	}
 	return db
 }
 

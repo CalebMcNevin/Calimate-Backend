@@ -2,6 +2,7 @@ package employees
 
 import (
 	"errors"
+	"qc_api/internal/utils"
 
 	"gorm.io/gorm"
 )
@@ -18,10 +19,10 @@ func (s *EmployeeService) CreateEmployee(employee *Employee) error {
 	return s.DB.Create(employee).Error
 }
 
-func (s *EmployeeService) GetEmployees() ([]Employee, error) {
+func (s *EmployeeService) GetEmployees(filter EmployeeFilter) ([]Employee, error) {
 	var employees []Employee
-	err := s.DB.Find(&employees).Error
-	return employees, err
+	query := utils.ApplyFilter(s.DB.Model(&Employee{}), filter)
+	return employees, query.Preload("Inspections").Find(&employees).Error
 }
 
 func (s *EmployeeService) GetEmployeeByID(id string) (Employee, error) {
@@ -31,4 +32,17 @@ func (s *EmployeeService) GetEmployeeByID(id string) (Employee, error) {
 		return Employee{}, err
 	}
 	return employee, err
+}
+
+func (s *EmployeeService) UpdateEmployee(id string, patch EmployeePatch) (*Employee, error) {
+	result := s.DB.Model(&Employee{}).Where("id = ?", id).Updates(patch)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	var employee Employee
+	result = s.DB.Where("id = ?", id).First(&employee)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	return &employee, nil
 }

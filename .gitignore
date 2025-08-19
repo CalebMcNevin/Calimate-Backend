@@ -36,3 +36,10 @@ data/
 
 # Air config
 .air.toml
+
+# Swaggar documentation
+docs/
+
+# AI Agents
+AGENTS.md
+.opencode.json

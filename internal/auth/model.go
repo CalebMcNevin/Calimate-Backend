@@ -4,6 +4,16 @@ import (
 	"qc_api/internal/db"
 )
 
+type LoginDTO struct {
+	Username string `json:"username" validate:"required,min=4"`
+	Password string `json:"password" validate:"required,min=8"`
+}
+
+type RegisterDTO struct {
+	Username string `json:"username" validate:"required,min=4"`
+	Password string `json:"password" validate:"required,min=8"`
+}
+
 type LoginResponse struct {
 	Token string `json:"token"`
 }

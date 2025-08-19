@@ -34,7 +34,11 @@ func GenerateReport(transcriptPath string, outputPath string) {
 	if err != nil {
 		log.Fatalf("failed to create output file: %v", err)
 	}
-	defer outputFile.Close()
+	defer func() {
+		if err := outputFile.Close(); err != nil {
+			log.Printf("Error closing output file: %v", err)
+		}
+	}()
 
 	// Stream to both stdout and file
 	// writer := io.MultiWriter(os.Stdout, outputFile)

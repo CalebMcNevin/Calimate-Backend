@@ -13,18 +13,22 @@ func (s *AuthService) AuthMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 		authHeader := c.Request().Header.Get("Authorization")
 		token := strings.TrimPrefix(authHeader, "Bearer ")
 		if token == "" {
-			c.JSON(http.StatusUnauthorized, map[string]string{
+			if err := c.JSON(http.StatusUnauthorized, map[string]string{
 				"error": "Missing token",
-			})
-			return errors.New("Missing auth token")
+			}); err != nil {
+				return err
+			}
+			return errors.New("missing auth token")
 		}
 
 		userId, err := s.validateJWT(token)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, map[string]string{
+			if err := c.JSON(http.StatusUnauthorized, map[string]string{
 				"error": "Invalid token",
-			})
-			return errors.New("Invalid auth token")
+			}); err != nil {
+				return err
+			}
+			return errors.New("invalid auth token")
 		}
 		c.Set("user_id", userId)
 		return next(c)

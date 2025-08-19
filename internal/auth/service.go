@@ -101,7 +101,8 @@ func (s *AuthService) GenerateJWT(user *User) (string, error) {
 	claims := jwt.MapClaims{
 		"username": user.Username,
 		"user_id":  user.ID,
-		"exp":      time.Now().Add(24 * time.Hour).Unix(),
+		"exp":      time.Now().Add(24 * time.Second).Unix(), //Custom for testing frontend
+		// "exp":      time.Now().Add(24 * time.Hour).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(s.jwtSecret)

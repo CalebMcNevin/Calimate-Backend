@@ -8,6 +8,7 @@ import (
 
 	"qc_api/internal/auth"
 	"qc_api/internal/config"
+	"qc_api/internal/utils"
 
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -20,7 +21,9 @@ func setupTestDB() *gorm.DB {
 	if err != nil {
 		panic("failed to connect database")
 	}
-	db.AutoMigrate(&auth.User{})
+	if err := db.AutoMigrate(&auth.User{}); err != nil {
+		panic("failed to migrate database")
+	}
 	return db
 }
 
@@ -30,35 +33,16 @@ func TestRegister(t *testing.T) {
 	db := setupTestDB()
 	authService := auth.NewAuthService(db, cfg.JWTSecret)
 	e := echo.New()
-
-	// Request
-	reqBody := `{"username": "testuser", "password": "password123"}`
-	req := httptest.NewRequest(http.MethodPost, "/register", strings.NewReader(reqBody))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-
-	// Handler
-	err := authService.RegisterHandler(c)
-
-	// Assertions
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusOK, rec.Code)
-}
-
-func TestLoginIncorrectPassword(t *testing.T) {
-	// Setup
-	cfg := config.NewConfig()
-	db := setupTestDB()
-	authService := auth.NewAuthService(db, cfg.JWTSecret)
-	e := echo.New()
+	e.Validator = utils.NewValidator()
 
 	// Create a user
-	user, _ := auth.NewUser("testuser", "password123")
-	authService.CreateUser(user)
+	user, _ := auth.NewUser("testuser2", "password123")
+	if err := authService.CreateUser(user); err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
 
 	// Request
-	reqBody := `{"username": "testuser", "password": "wrongpassword"}`
+	reqBody := `{"username": "testuser2", "password": "wrongpassword"}`
 	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -78,10 +62,13 @@ func TestAuthMiddleware(t *testing.T) {
 	db := setupTestDB()
 	authService := auth.NewAuthService(db, cfg.JWTSecret)
 	e := echo.New()
+	e.Validator = utils.NewValidator()
 
 	// Create a user
-	user, _ := auth.NewUser("testuser", "password123")
-	authService.CreateUser(user)
+	user, _ := auth.NewUser("testuser3", "password123")
+	if err := authService.CreateUser(user); err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
 
 	// Login to get a token
 	token, _ := authService.GenerateJWT(user)

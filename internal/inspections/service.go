@@ -1,6 +1,8 @@
 package inspections
 
 import (
+	"qc_api/internal/utils"
+
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -23,13 +25,10 @@ func (s *InspectionService) CreateInspection(inspection *Inspection) (*Inspectio
 	return inspection, nil
 }
 
-func (s *InspectionService) GetInspections() ([]Inspection, error) {
+func (s *InspectionService) GetInspections(filter InspectionFilter) ([]Inspection, error) {
 	var inspections []Inspection
-	result := s.DB.Find(&inspections)
-	if result.Error != nil {
-		return nil, result.Error
-	}
-	return inspections, nil
+	query := utils.ApplyFilter(s.DB.Model(&Inspection{}), filter)
+	return inspections, query.Find(&inspections).Error
 }
 
 func (s *InspectionService) GetInspectionByID(inspection_id uuid.UUID) (*Inspection, error) {
@@ -60,4 +59,15 @@ func (s *InspectionService) UpdateInspection(id uuid.UUID, patch InspectionPatch
 		return nil, result.Error
 	}
 	return &inspection, nil
+}
+
+func (s *InspectionService) DeleteInspection(id uuid.UUID) error {
+	result := s.DB.Delete(&Inspection{}, id)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }

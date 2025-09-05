@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
 
@@ -30,7 +31,11 @@ func (s *AuthService) AuthMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 			}
 			return errors.New("invalid auth token")
 		}
-		c.Set("user_id", userId)
+		parsedUserID, err := uuid.Parse(userId)
+		if err != nil {
+			return errors.New("failed to parse UserID")
+		}
+		c.Set("user_id", parsedUserID)
 		return next(c)
 	}
 }

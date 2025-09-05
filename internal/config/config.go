@@ -5,12 +5,14 @@ import (
 	"encoding/hex"
 	"log"
 	"os"
+	"strconv"
 )
 
 // Config holds the application configuration.
 type Config struct {
-	JWTSecret []byte
-	MotiveKey string
+	JWTSecret   []byte
+	MotiveKey   string
+	AuthTimeout int
 }
 
 // NewConfig creates and returns a new configuration object.
@@ -25,6 +27,13 @@ func NewConfig() *Config {
 		jwtSecret = generateRandomKey(32)
 	}
 
+	authTokenTimeout, err := strconv.Atoi(os.Getenv("AUTH_TOKEN_TIMEOUT"))
+	if err != nil {
+		log.Printf("Error loading AUTH_TOKEN_TIMEOUT: %v\n", err.Error())
+		authTokenTimeout = 60 * 60 * 1000
+		log.Printf("No auth token timeout set (AUTH_TOKEN_TIMEOUT). Using default of %d\n", authTokenTimeout)
+	}
+
 	motiveKey := os.Getenv("MOTIVE_KEY")
 	if motiveKey == "" {
 		log.Println("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
@@ -33,8 +42,9 @@ func NewConfig() *Config {
 	}
 
 	return &Config{
-		JWTSecret: []byte(jwtSecret),
-		MotiveKey: motiveKey,
+		JWTSecret:   []byte(jwtSecret),
+		MotiveKey:   motiveKey,
+		AuthTimeout: authTokenTimeout,
 	}
 }
 

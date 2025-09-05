@@ -16,14 +16,16 @@ var ErrUserAlreadyExists = errors.New("user already exists")
 var ErrInvalidCredentials = errors.New("invalid credentials")
 
 type AuthService struct {
-	DB        *gorm.DB
-	jwtSecret []byte
+	DB           *gorm.DB
+	jwtSecret    []byte
+	tokenTimeout time.Duration
 }
 
-func NewAuthService(db *gorm.DB, jwtSecret []byte) *AuthService {
+func NewAuthService(db *gorm.DB, jwtSecret []byte, tokenTimeout time.Duration) *AuthService {
 	return &AuthService{
-		DB:        db,
-		jwtSecret: jwtSecret,
+		DB:           db,
+		jwtSecret:    jwtSecret,
+		tokenTimeout: tokenTimeout,
 	}
 }
 
@@ -101,7 +103,8 @@ func (s *AuthService) GenerateJWT(user *User) (string, error) {
 	claims := jwt.MapClaims{
 		"username": user.Username,
 		"user_id":  user.ID,
-		"exp":      time.Now().Add(24 * time.Second).Unix(), //Custom for testing frontend
+		"exp":      s.tokenTimeout,
+		// "exp":      time.Now().Add(24 * time.Second).Unix(), //Custom for testing frontend
 		// "exp":      time.Now().Add(24 * time.Hour).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

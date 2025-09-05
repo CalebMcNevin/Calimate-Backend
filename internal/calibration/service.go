@@ -1,10 +1,8 @@
 package calibration
 
 import (
-	"context"
 	"fmt"
 	"qc_api/internal/utils"
-	"time"
 
 	"github.com/Knetic/govaluate"
 	"github.com/google/uuid"
@@ -17,30 +15,6 @@ type CalibrationService struct {
 
 func NewCalibrationService(db *gorm.DB) *CalibrationService {
 	return &CalibrationService{DB: db}
-}
-
-// === Units ===
-func (s *CalibrationService) ReadUnits() ([]Unit, error) {
-	var units []Unit
-	result := s.DB.Find(&units)
-	return units, result.Error
-}
-
-func (s *CalibrationService) CreateUnit(unit *Unit) error {
-	return s.DB.Create(unit).Error
-}
-
-func (s *CalibrationService) UpdateUnit(symbol string, patch UnitPatch) (*Unit, error) {
-	result := s.DB.Model(&Unit{}).Where("symbol = ?", symbol).Updates(patch)
-	if result.Error != nil {
-		return nil, result.Error
-	}
-	var unit Unit
-	result = s.DB.Where("symbol = ?", symbol).First(&unit)
-	if result.Error != nil {
-		return nil, result.Error
-	}
-	return &unit, nil
 }
 
 // === Formulations ===
@@ -70,14 +44,14 @@ func (s *CalibrationService) UpdateFormulation(id uuid.UUID, patch FormulationPa
 // === Lawn Services ===
 func (s *CalibrationService) ReadLawnServices() ([]LawnService, error) {
 	var services []LawnService
-	result := s.DB.Preload("Formulation").Preload("TargetCalibrationUnit").Find(&services)
+	result := s.DB.Preload("Formulation").Find(&services)
 	return services, result.Error
 }
 
 func (s *CalibrationService) CreateLawnService(service *LawnService) error {
-	Result := s.DB.Create(service)
-	if Result.Error != nil {
-		return Result.Error
+	result := s.DB.Create(service)
+	if result.Error != nil {
+		return result.Error
 	}
 	return s.DB.Preload("Formulation").Find(service).Error
 }
@@ -88,7 +62,7 @@ func (s *CalibrationService) UpdateLawnService(id uuid.UUID, patch LawnServicePa
 		return nil, result.Error
 	}
 	var service LawnService
-	result = s.DB.Preload("Formulation").Preload("TargetCalibrationUnit").Where("id = ?", id).First(&service)
+	result = s.DB.Preload("Formulation").Where("id = ?", id).First(&service)
 	if result.Error != nil {
 		return nil, result.Error
 	}
@@ -99,34 +73,99 @@ func (s *CalibrationService) UpdateLawnService(id uuid.UUID, patch LawnServicePa
 func (s *CalibrationService) ReadCalibrationLogs(filter CalibrationLogFilter) ([]CalibrationLog, error) {
 	var logs []CalibrationLog
 	query := utils.ApplyFilter(s.DB.Model(&CalibrationLog{}), filter)
-	result := query.Preload("LawnService.Formulation").Preload("Records").Find(&logs)
-	return logs, result.Error
+	result := query.Preload("LawnService.Formulation").Preload("Records", func(db *gorm.DB) *gorm.DB {
+		return db.Order("created_at ASC")
+	}).Find(&logs)
+	if result.Error != nil {
+		return logs, result.Error
+	}
+
+	// Calculate calibration for each log
+	for i := range logs {
+		s.calculateCalibrationForLog(&logs[i])
+		// Calculate calibrations for individual records
+		s.calculateCalibrationForRecords(&logs[i])
+	}
+
+	return logs, nil
 }
 
 func evaluateCalibrationFunction(expression string, parameters map[string]any) (float64, error) {
-	// Create a new sandboxed evaluator
+	// Create functions map for future expansion
 	functions := make(map[string]govaluate.ExpressionFunction)
 
-	// Evaluate the expression with a timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-
-	eval, err := govaluate.NewEvaluableExpressionWithFunctions(expression, functions)
+	calFunc, err := govaluate.NewEvaluableExpressionWithFunctions(expression, functions)
 	if err != nil {
 		return 0, err
 	}
 
-	result, err := eval.Evaluate(parameters)
+	result, err := calFunc.Evaluate(parameters)
 	if err != nil {
 		return 0, err
 	}
 
-	// Check for timeout
-	if ctx.Err() == context.DeadlineExceeded {
-		return 0, fmt.Errorf("calibration function evaluation timed out")
+	// Safe type conversion
+	switch v := result.(type) {
+	case float64:
+		return v, nil
+	default:
+		return 0, fmt.Errorf("expression returned non-numeric type: %T", result)
+	}
+}
+
+func (s *CalibrationService) calculateCalibrationForLog(log *CalibrationLog) {
+	if len(log.Records) == 0 || log.LawnService.CalibrationFunction == "" {
+		return
 	}
 
-	return result.(float64), nil
+	firstRecord := log.Records[0]
+	lastRecord := log.Records[len(log.Records)-1]
+
+	parameters := map[string]any{
+		"first_amount":   firstRecord.MeasurementValue,
+		"current_amount": lastRecord.MeasurementValue,
+		"first_area":     float64(firstRecord.MeasurementArea),
+		"current_area":   float64(lastRecord.MeasurementArea),
+	}
+
+	calibration, err := evaluateCalibrationFunction(log.LawnService.CalibrationFunction, parameters)
+	if err == nil {
+		log.CurrentCalibration = &calibration
+	}
+}
+
+func (s *CalibrationService) calculateCalibrationForRecords(log *CalibrationLog) {
+	if len(log.Records) == 0 || log.LawnService.DifferentialCalibrationFunction == "" {
+		return
+	}
+
+	// Records are already sorted by created_at due to the Preload order
+	for i := 0; i < len(log.Records); i++ {
+		currentRecord := log.Records[i]
+
+		// For the first record, use 0 for previous values
+		var previousAmount float64 = 0
+		var previousArea float64 = 0
+
+		// For subsequent records, use actual previous record values
+		if i > 0 {
+			previousRecord := log.Records[i-1]
+			previousAmount = previousRecord.MeasurementValue
+			previousArea = float64(previousRecord.MeasurementArea)
+		}
+
+		parameters := map[string]any{
+			"current_amount":  currentRecord.MeasurementValue,
+			"current_area":    float64(currentRecord.MeasurementArea),
+			"previous_amount": previousAmount,
+			"previous_area":   previousArea,
+		}
+
+		calibration, err := evaluateCalibrationFunction(log.LawnService.DifferentialCalibrationFunction, parameters)
+		if err == nil {
+			log.Records[i].Calibration = calibration
+		}
+	}
 }
 
 func (s *CalibrationService) ReadCalibrationLog(log_id uuid.UUID) (CalibrationLog, error) {
@@ -138,25 +177,19 @@ func (s *CalibrationService) ReadCalibrationLog(log_id uuid.UUID) (CalibrationLo
 		return cal_log, result.Error
 	}
 
-	if len(cal_log.Records) > 0 {
-		parameters := map[string]any{
-			"first_amount": cal_log.Records[0].MeasurementValue,
-			"last_amount":  cal_log.Records[len(cal_log.Records)-1].MeasurementValue,
-			"last_area":    float64(cal_log.Records[len(cal_log.Records)-1].MeasurementArea),
-		}
+	// Calculate calibration using the helper function
+	s.calculateCalibrationForLog(&cal_log)
 
-		calibration, err := evaluateCalibrationFunction(cal_log.LawnService.CalibrationFunction, parameters)
-		if err == nil {
-			cal_log.CurrentCalibration = &calibration
-		}
-	}
+	// Calculate calibrations for individual records
+	s.calculateCalibrationForRecords(&cal_log)
 
 	return cal_log, nil
 }
 
-func (s *CalibrationService) CreateCalibrationLog(log *CalibrationLogDTO) (*CalibrationLog, error) {
+func (s *CalibrationService) CreateCalibrationLog(log *CalibrationLogDTO, userID uuid.UUID) (*CalibrationLog, error) {
 	calibrationLog := &CalibrationLog{
 		LawnServiceID: log.LawnServiceID,
+		UserID:        userID,
 	}
 	result := s.DB.Create(calibrationLog)
 	if result.Error != nil {
@@ -178,11 +211,16 @@ func (s *CalibrationService) UpdateCalibrationLog(id uuid.UUID, patch Calibratio
 	return &log, nil
 }
 
+func (s *CalibrationService) DeleteCalibrationLog(id uuid.UUID) error {
+	result := s.DB.Delete(&CalibrationLog{}, id)
+	return result.Error
+}
+
 // === Calibration Records ===
 func (s *CalibrationService) ReadCalibrationRecords(filter CalibrationRecordFilter) ([]CalibrationRecord, error) {
 	var records []CalibrationRecord
 	query := utils.ApplyFilter(s.DB.Model(&CalibrationRecord{}), filter)
-	result := query.Preload("Unit").Find(&records)
+	result := query.Find(&records)
 	return records, result.Error
 }
 
@@ -196,7 +234,7 @@ func (s *CalibrationService) UpdateCalibrationRecord(id uuid.UUID, patch Calibra
 		return nil, result.Error
 	}
 	var record CalibrationRecord
-	result = s.DB.Preload("Unit").Where("id = ?", id).First(&record)
+	result = s.DB.Where("id = ?", id).First(&record)
 	if result.Error != nil {
 		return nil, result.Error
 	}

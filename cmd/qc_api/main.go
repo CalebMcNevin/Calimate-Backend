@@ -114,7 +114,7 @@ func main() {
 	}
 	db := InitDB(dbPath)
 
-	authService := auth.NewAuthService(db, cfg.JWTSecret)
+	authService := auth.NewAuthService(db, cfg.JWTSecret, time.Duration(cfg.AuthTimeout)*time.Millisecond)
 	employeeService := employees.NewEmployeeService(db)
 	inspectionService := inspections.NewInspectionService(db)
 	calibrationService := calibration.NewCalibrationService(db)

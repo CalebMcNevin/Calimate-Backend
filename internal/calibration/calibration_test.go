@@ -27,98 +27,6 @@ func setupTestDB() *gorm.DB {
 	return db
 }
 
-func TestPostUnit(t *testing.T) {
-	// Setup
-	db := setupTestDB()
-	calibService := calibration.NewCalibrationService(db)
-	e := echo.New()
-	e.Validator = utils.NewValidator()
-
-	// Request
-	reqBody := `{"symbol": "kg", "description": "Kilogram"}`
-	req := httptest.NewRequest(http.MethodPost, "/units", strings.NewReader(reqBody))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-
-	// Handler
-	err := calibService.PostUnitHandler(c)
-
-	// Assertions
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusCreated, rec.Code)
-}
-
-func TestPostUnitMissingSymbol(t *testing.T) {
-	// Setup
-	db := setupTestDB()
-	calibService := calibration.NewCalibrationService(db)
-	e := echo.New()
-	e.Validator = utils.NewValidator()
-
-	// Request
-	reqBody := `{"description": "Kilogram"}`
-	req := httptest.NewRequest(http.MethodPost, "/units", strings.NewReader(reqBody))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-
-	// Handler
-	err := calibService.PostUnitHandler(c)
-
-	// Assertions
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-}
-
-func TestPostUnitMissingDescription(t *testing.T) {
-	// Setup
-	db := setupTestDB()
-	calibService := calibration.NewCalibrationService(db)
-	e := echo.New()
-	e.Validator = utils.NewValidator()
-
-	// Request
-	reqBody := `{"symbol": "kg"}`
-	req := httptest.NewRequest(http.MethodPost, "/units", strings.NewReader(reqBody))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-
-	// Handler
-	err := calibService.PostUnitHandler(c)
-
-	// Assertions
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusBadRequest, rec.Code)
-}
-
-func TestPostUnitExistingSymbol(t *testing.T) {
-	// Setup
-	db := setupTestDB()
-	calibService := calibration.NewCalibrationService(db)
-	e := echo.New()
-	e.Validator = utils.NewValidator()
-
-	// Create a unit
-	unit := &calibration.Unit{Symbol: "kg", Description: "Kilogram"}
-	db.Create(unit)
-
-	// Request
-	reqBody := `{"symbol": "kg", "description": "Kilogram"}`
-	req := httptest.NewRequest(http.MethodPost, "/units", strings.NewReader(reqBody))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-
-	// Handler
-	err := calibService.PostUnitHandler(c)
-
-	// Assertions
-	assert.NoError(t, err)
-	assert.Equal(t, http.StatusInternalServerError, rec.Code)
-}
-
 func TestPostFormulation(t *testing.T) {
 	// Setup
 	db := setupTestDB()
@@ -170,14 +78,12 @@ func TestPostLawnService(t *testing.T) {
 	e := echo.New()
 	e.Validator = utils.NewValidator()
 
-	// Create a formulation and unit
+	// Create a formulation
 	formulation := &calibration.Formulation{Name: "GRANULE"}
 	db.Create(formulation)
-	unit := &calibration.Unit{Symbol: "kg", Description: "Kilogram"}
-	db.Create(unit)
 
 	// Request
-	reqBody := `{"code": "LS01", "description": "Spring Fertilizer", "formulation_id": "` + formulation.ID.String() + `", "target_calibration_value": 1.5, "target_calibration_unit_code": "kg", "calibration_function": "last_amount / last_area"}`
+	reqBody := `{"code": "LS01", "description": "Spring Fertilizer", "formulation_id": "` + formulation.ID.String() + `", "target_calibration_value": 1.5, "target_calibration_unit": "kg", "measurement_unit": "kg", "calibration_function": "current_amount / current_area"}`
 	req := httptest.NewRequest(http.MethodPost, "/lawnservices", strings.NewReader(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -198,14 +104,12 @@ func TestPostLawnServiceMissingCode(t *testing.T) {
 	e := echo.New()
 	e.Validator = utils.NewValidator()
 
-	// Create a formulation and unit
+	// Create a formulation
 	formulation := &calibration.Formulation{Name: "GRANULE"}
 	db.Create(formulation)
-	unit := &calibration.Unit{Symbol: "kg", Description: "Kilogram"}
-	db.Create(unit)
 
 	// Request
-	reqBody := `{"description": "Spring Fertilizer", "formulation_id": "` + formulation.ID.String() + `", "target_calibration_value": 1.5, "target_calibration_unit_code": "kg", "calibration_function": "last_amount / last_area"}`
+	reqBody := `{"description": "Spring Fertilizer", "formulation_id": "` + formulation.ID.String() + `", "target_calibration_value": 1.5, "target_calibration_unit": "kg", "measurement_unit": "kg", "calibration_function": "current_amount / current_area"}`
 	req := httptest.NewRequest(http.MethodPost, "/lawnservices", strings.NewReader(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -230,12 +134,13 @@ func TestPostCalibrationLog(t *testing.T) {
 	formulation := &calibration.Formulation{Name: "GRANULE"}
 	db.Create(formulation)
 	lawnService := &calibration.LawnService{
-		Code:                      "LS01",
-		Description:               "Spring Fertilizer",
-		FormulationID:             formulation.ID,
-		TargetCalibrationValue:    1.5,
-		TargetCalibrationUnitCode: "kg",
-		CalibrationFunction:       "last_amount / last_area",
+		Code:                   "LS01",
+		Description:            "Spring Fertilizer",
+		FormulationID:          formulation.ID,
+		TargetCalibrationValue: 1.5,
+		TargetCalibrationUnit:  "kg",
+		MeasurementUnit:        "kg",
+		CalibrationFunction:    "current_amount / current_area",
 	}
 	db.Create(lawnService)
 
@@ -245,6 +150,7 @@ func TestPostCalibrationLog(t *testing.T) {
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
+	c.Set("user_id", uuid.New())
 
 	// Handler
 	err := calibService.PostCalibrationLogHandler(c)
@@ -265,12 +171,13 @@ func TestPostCalibrationLogEmptyRecords(t *testing.T) {
 	formulation := &calibration.Formulation{Name: "GRANULE"}
 	db.Create(formulation)
 	lawnService := &calibration.LawnService{
-		Code:                      "LS01",
-		Description:               "Spring Fertilizer",
-		FormulationID:             formulation.ID,
-		TargetCalibrationValue:    1.5,
-		TargetCalibrationUnitCode: "kg",
-		CalibrationFunction:       "last_amount / last_area",
+		Code:                   "LS01",
+		Description:            "Spring Fertilizer",
+		FormulationID:          formulation.ID,
+		TargetCalibrationValue: 1.5,
+		TargetCalibrationUnit:  "kg",
+		MeasurementUnit:        "kg",
+		CalibrationFunction:    "current_amount / current_area",
 	}
 	db.Create(lawnService)
 
@@ -280,6 +187,7 @@ func TestPostCalibrationLogEmptyRecords(t *testing.T) {
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
+	c.Set("user_id", uuid.New())
 
 	// Handler
 	err := calibService.PostCalibrationLogHandler(c)
@@ -302,7 +210,7 @@ func TestPostCalibrationRecord(t *testing.T) {
 	db.Create(calibLog)
 
 	// Request
-	reqBody := `{"measurement_value": 1.5, "units": "kg"}`
+	reqBody := `{"measurement_value": 1.5, "measurement_area": 100, "units": "kg"}`
 	req := httptest.NewRequest(http.MethodPost, "/calibrationlogs/"+calibLog.ID.String()+"/records", strings.NewReader(reqBody))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -406,12 +314,13 @@ func TestGetCalibrationLogInvalidFunction(t *testing.T) {
 	formulation := &calibration.Formulation{Name: "GRANULE"}
 	db.Create(formulation)
 	lawnService := &calibration.LawnService{
-		Code:                      "LS01",
-		Description:               "Spring Fertilizer",
-		FormulationID:             formulation.ID,
-		TargetCalibrationValue:    1.5,
-		TargetCalibrationUnitCode: "kg",
-		CalibrationFunction:       "invalid_function +",
+		Code:                   "LS01",
+		Description:            "Spring Fertilizer",
+		FormulationID:          formulation.ID,
+		TargetCalibrationValue: 1.5,
+		TargetCalibrationUnit:  "kg",
+		MeasurementUnit:        "kg",
+		CalibrationFunction:    "invalid_function +",
 	}
 	db.Create(lawnService)
 
@@ -456,12 +365,13 @@ func TestGetCalibrationLogWithRecords(t *testing.T) {
 	formulation := &calibration.Formulation{Name: "GRANULE"}
 	db.Create(formulation)
 	lawnService := &calibration.LawnService{
-		Code:                      "LS01",
-		Description:               "Spring Fertilizer",
-		FormulationID:             formulation.ID,
-		TargetCalibrationValue:    1.5,
-		TargetCalibrationUnitCode: "kg",
-		CalibrationFunction:       "last_amount / last_area",
+		Code:                   "LS01",
+		Description:            "Spring Fertilizer",
+		FormulationID:          formulation.ID,
+		TargetCalibrationValue: 1.5,
+		TargetCalibrationUnit:  "kg",
+		MeasurementUnit:        "kg",
+		CalibrationFunction:    "current_amount / current_area",
 	}
 	db.Create(lawnService)
 

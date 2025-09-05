@@ -61,6 +61,21 @@ func ApplyFilter(query *gorm.DB, filter any) *gorm.DB {
 			} else {
 				query = query.Where(columnName+" = ?", v)
 			}
+		case SimpleDate:
+			if strings.Contains(fieldName, "From") || strings.HasSuffix(fieldName, "Start") {
+				// Start of day: 00:00:00
+				startOfDay := v.Time
+				query = query.Where(columnName+" >= ?", startOfDay)
+			} else if strings.Contains(fieldName, "To") || strings.HasSuffix(fieldName, "End") {
+				// End of day: 23:59:59.999
+				endOfDay := v.Time.AddDate(0, 0, 1).Add(-1 * time.Nanosecond)
+				query = query.Where(columnName+" <= ?", endOfDay)
+			} else {
+				// Exact date match (start to end of day)
+				startOfDay := v.Time
+				endOfDay := v.Time.AddDate(0, 0, 1).Add(-1 * time.Nanosecond)
+				query = query.Where(columnName+" >= ? AND "+columnName+" <= ?", startOfDay, endOfDay)
+			}
 		default:
 			query = query.Where(columnName+" = ?", v)
 		}

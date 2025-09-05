@@ -2,34 +2,18 @@ package calibration
 
 import (
 	"qc_api/internal/db"
-	"time"
+	"qc_api/internal/utils"
 
 	"github.com/google/uuid"
 )
 
 func Models() []any {
 	return []any{
-		&Unit{},
 		&Formulation{},
 		&LawnService{},
 		&CalibrationLog{},
 		&CalibrationRecord{},
 	}
-}
-
-type Unit struct {
-	Symbol      string `gorm:"primaryKey" json:"symbol" validate:"required"`    //e.g. "kg"
-	Description string `gorm:"not null" json:"description" validate:"required"` //e.g. "Kilogram"
-}
-
-type UnitPatch struct {
-	Symbol      *string `json:"symbol,omitempty"`
-	Description *string `json:"description,omitempty"`
-}
-
-type UnitDTO struct {
-	Symbol      string `json:"symbol" validate:"required"`
-	Description string `json:"description" validate:"required"`
 }
 
 type Formulation struct {
@@ -47,32 +31,37 @@ type FormulationPatch struct {
 
 type LawnService struct {
 	db.BaseModel
-	Code                      string      `gorm:"unique;not null" json:"code" validate:"required"` //e.g. "LS01"
-	Description               string      `json:"description" validate:"required"`                 //e.g. "Spring Fertilizer"
-	FormulationID             uuid.UUID   `json:"formulation_id" validate:"required"`
-	Formulation               Formulation `gorm:"foreignKey:FormulationID" json:"formulation"`
-	TargetCalibrationValue    float32     `json:"target_calibration_value" validate:"required"`
-	TargetCalibrationUnitCode string      `gorm:"not null" json:"target_calibration_unit_code" validate:"required"`
-	TargetCalibrationUnit     Unit        `gorm:"foreignKey:TargetCalibrationUnitCode;references:Symbol;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT" json:"-"`
-	CalibrationFunction       string      `json:"calibration_function" validate:"required"`
+	Code                            string      `gorm:"unique;not null" json:"code" validate:"required"` //e.g. "LS01"
+	Description                     string      `json:"description" validate:"required"`                 //e.g. "Spring Fertilizer"
+	FormulationID                   uuid.UUID   `json:"formulation_id" validate:"required"`
+	Formulation                     Formulation `gorm:"foreignKey:FormulationID" json:"formulation"`
+	TargetCalibrationValue          float32     `json:"target_calibration_value" validate:"required"`
+	TargetCalibrationUnit           string      `gorm:"not null" json:"target_calibration_unit" validate:"required"`
+	MeasurementUnit                 string      `json:"measurement_unit" validate:"required"`
+	CalibrationFunction             string      `json:"calibration_function" validate:"required"`
+	DifferentialCalibrationFunction string      `json:"differential_calibration_function"`
 }
 
 type LawnServiceDTO struct {
-	Code                      string    `json:"code" validate:"required"`
-	Description               string    `json:"description" validate:"required"`
-	FormulationID             uuid.UUID `json:"formulation_id" validate:"required"`
-	TargetCalibrationValue    float32   `json:"target_calibration_value" validate:"required"`
-	TargetCalibrationUnitCode string    `json:"target_calibration_unit_code" validate:"required"`
-	CalibrationFunction       string    `json:"calibration_function" validate:"required"`
+	Code                            string    `json:"code" validate:"required"`
+	Description                     string    `json:"description" validate:"required"`
+	FormulationID                   uuid.UUID `json:"formulation_id" validate:"required"`
+	TargetCalibrationValue          float32   `json:"target_calibration_value" validate:"required"`
+	TargetCalibrationUnit           string    `json:"target_calibration_unit" validate:"required"`
+	MeasurementUnit                 string    `json:"measurement_unit" validate:"required"`
+	CalibrationFunction             string    `json:"calibration_function" validate:"required"`
+	DifferentialCalibrationFunction string    `json:"differential_calibration_function"`
 }
 
 type LawnServicePatch struct {
-	Code                      *string    `json:"code,omitempty"`
-	Description               *string    `json:"description,omitempty"`
-	FormulationID             *uuid.UUID `json:"formulation_id,omitempty"`
-	TargetCalibrationValue    *float32   `json:"target_calibration_value,omitempty"`
-	TargetCalibrationUnitCode *string    `json:"target_calibration_unit_code,omitempty"`
-	CalibrationFunction       *string    `json:"calibration_function,omitempty"`
+	Code                            *string    `json:"code,omitempty"`
+	Description                     *string    `json:"description,omitempty"`
+	FormulationID                   *uuid.UUID `json:"formulation_id,omitempty"`
+	TargetCalibrationValue          *float32   `json:"target_calibration_value,omitempty"`
+	TargetCalibrationUnit           *string    `json:"target_calibration_unit,omitempty"`
+	MeasurementUnit                 *string    `json:"measurement_unit,omitempty"`
+	CalibrationFunction             *string    `json:"calibration_function,omitempty"`
+	DifferentialCalibrationFunction *string    `json:"differential_calibration_function,omitempty"`
 }
 
 type CalibrationLog struct {
@@ -94,10 +83,10 @@ type CalibrationLogPatch struct {
 }
 
 type CalibrationLogFilter struct {
-	UserID        *uuid.UUID `json:"user_id,omitempty" query:"user_id"`
-	LawnServiceID *uuid.UUID `json:"lawn_service_id,omitempty" query:"lawn_service_id"`
-	DateFrom      *time.Time `json:"date_from,omitempty" query:"date_from"`
-	DateTo        *time.Time `json:"date_to,omitempty" query:"date_to"`
+	UserID        *uuid.UUID        `json:"user_id,omitempty" query:"user_id"`
+	LawnServiceID *uuid.UUID        `json:"lawn_service_id,omitempty" query:"lawn_service_id"`
+	DateFrom      *utils.SimpleDate `json:"date_from,omitempty" query:"date_from" filter:"created_at"`
+	DateTo        *utils.SimpleDate `json:"date_to,omitempty" query:"date_to" filter:"created_at"`
 }
 
 type CalibrationRecord struct {
@@ -107,14 +96,13 @@ type CalibrationRecord struct {
 	MeasurementValue float64        `json:"measurement_value"`
 	MeasurementUnit  string         `json:"measurement_unit"`
 	MeasurementArea  uint           `json:"measurement_area"`
-	UnitSymbol       string         `json:"unit_symbol"`
-	Unit             Unit           `gorm:"foreignKey:UnitSymbol;references:Symbol" json:"-"`
 	Calibration      float64        `gorm:"-" json:"calibration"`
 }
 
 type CalibrationRecordDTO struct {
-	Value float32 `json:"measurement_value" validate:"required"`
-	Units string  `json:"units" validate:"required"`
+	Value *float32 `json:"measurement_value" validate:"required"`
+	Units string   `json:"units" validate:"required"`
+	Area  *uint    `json:"measurement_area" validate:"required"`
 }
 
 type CalibrationRecordPatch struct {
@@ -122,7 +110,6 @@ type CalibrationRecordPatch struct {
 	MeasurementValue *float64   `json:"measurement_value,omitempty"`
 	MeasurementUnit  *string    `json:"measurement_unit,omitempty"`
 	MeasurementArea  *uint      `json:"measurement_area,omitempty"`
-	UnitSymbol       *string    `json:"unit_symbol,omitempty"`
 }
 
 type CalibrationRecordFilter struct {

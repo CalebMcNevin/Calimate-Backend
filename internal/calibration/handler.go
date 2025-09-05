@@ -10,58 +10,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// === Units ===
-
-// GetUnitsHandler godoc
-// @Summary Get all units
-// @Description Retrieve all measurement units
-// @Tags calibration
-// @Accept json
-// @Produce json
-// @Success 200 {array} Unit
-// @Failure 500 {object} utils.ErrorResponse
-// @Security BearerAuth
-// @Router /units [get]
-func (s *CalibrationService) GetUnitsHandler(c echo.Context) error {
-	units, err := s.ReadUnits()
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, utils.ErrorResponse{Error: err.Error()})
-	}
-	return c.JSON(http.StatusOK, units)
-}
-
-// PostUnitHandler godoc
-// @Summary Create a new unit
-// @Description Create a new measurement unit
-// @Tags calibration
-// @Accept json
-// @Produce json
-// @Param unit body UnitDTO true "Unit data"
-// @Success 201 {object} Unit
-// @Failure 400 {object} utils.ErrorResponse
-// @Failure 500 {object} utils.ErrorResponse
-// @Security BearerAuth
-// @Router /units [post]
-func (s *CalibrationService) PostUnitHandler(c echo.Context) error {
-	var unitDTO UnitDTO
-	if err := c.Bind(&unitDTO); err != nil {
-		return c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "Invalid request body"})
-	}
-	if err := c.Validate(&unitDTO); err != nil {
-		return c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: err.Error()})
-	}
-
-	unit := &Unit{
-		Symbol:      unitDTO.Symbol,
-		Description: unitDTO.Description,
-	}
-
-	if err := s.CreateUnit(unit); err != nil {
-		return c.JSON(http.StatusInternalServerError, utils.ErrorResponse{Error: err.Error()})
-	}
-	return c.JSON(http.StatusCreated, unit)
-}
-
 // === Formulations ===
 
 // GetFormulationsHandler godoc
@@ -155,12 +103,14 @@ func (s *CalibrationService) PostLawnServiceHandler(c echo.Context) error {
 	}
 
 	lawnService := &LawnService{
-		Code:                      lawnServiceDTO.Code,
-		Description:               lawnServiceDTO.Description,
-		FormulationID:             lawnServiceDTO.FormulationID,
-		TargetCalibrationValue:    lawnServiceDTO.TargetCalibrationValue,
-		TargetCalibrationUnitCode: lawnServiceDTO.TargetCalibrationUnitCode,
-		CalibrationFunction:       lawnServiceDTO.CalibrationFunction,
+		Code:                            lawnServiceDTO.Code,
+		Description:                     lawnServiceDTO.Description,
+		FormulationID:                   lawnServiceDTO.FormulationID,
+		TargetCalibrationValue:          lawnServiceDTO.TargetCalibrationValue,
+		TargetCalibrationUnit:           lawnServiceDTO.TargetCalibrationUnit,
+		MeasurementUnit:                 lawnServiceDTO.MeasurementUnit,
+		CalibrationFunction:             lawnServiceDTO.CalibrationFunction,
+		DifferentialCalibrationFunction: lawnServiceDTO.DifferentialCalibrationFunction,
 	}
 
 	if err := s.CreateLawnService(lawnService); err != nil {
@@ -247,7 +197,7 @@ func (s *CalibrationService) PostCalibrationLogHandler(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: err.Error()})
 	}
 
-	log, err := s.CreateCalibrationLog(&logDTO)
+	log, err := s.CreateCalibrationLog(&logDTO, c.Get("user_id").(uuid.UUID))
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, utils.ErrorResponse{Error: err.Error()})
 	}
@@ -317,7 +267,8 @@ func (s *CalibrationService) PostCalibrationRecordHandler(c echo.Context) error 
 
 	record := &CalibrationRecord{
 		CalibrationLogID: log_id,
-		MeasurementValue: float64(recordDTO.Value),
+		MeasurementValue: float64(*recordDTO.Value),
+		MeasurementArea:  *recordDTO.Area,
 		MeasurementUnit:  recordDTO.Units,
 	}
 
@@ -328,36 +279,6 @@ func (s *CalibrationService) PostCalibrationRecordHandler(c echo.Context) error 
 }
 
 // === PATCH Handlers ===
-
-// PatchUnitHandler godoc
-// @Summary Update unit by symbol
-// @Description Update specific fields of a unit by its symbol
-// @Tags calibration
-// @Accept json
-// @Produce json
-// @Param symbol path string true "Unit Symbol"
-// @Param unit body UnitPatch true "Unit update data"
-// @Success 200 {object} Unit
-// @Failure 400 {object} utils.ErrorResponse
-// @Failure 404 {object} utils.ErrorResponse
-// @Failure 500 {object} utils.ErrorResponse
-// @Security BearerAuth
-// @Router /units/{symbol} [patch]
-func (s *CalibrationService) PatchUnitHandler(c echo.Context) error {
-	symbol := c.Param("symbol")
-	if symbol == "" {
-		return c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "invalid unit symbol"})
-	}
-	var patch UnitPatch
-	if err := c.Bind(&patch); err != nil {
-		return c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: err.Error()})
-	}
-	unit, err := s.UpdateUnit(symbol, patch)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, utils.ErrorResponse{Error: "update to database failed"})
-	}
-	return c.JSON(http.StatusOK, unit)
-}
 
 // PatchFormulationHandler godoc
 // @Summary Update formulation by ID
@@ -480,20 +401,35 @@ func (s *CalibrationService) PatchCalibrationRecordHandler(c echo.Context) error
 	return c.JSON(http.StatusOK, record)
 }
 
-// DeleteCalibrationRecordHandler godoc
-// @Summary Delete calibration record by ID
-// @Description Soft-delete a calibration record by its ID
+// DeleteCalibrationLogHandler godoc
+// @Summary Delete calibration log by ID
+// @Description Soft-delete a calibration log by its ID
 // @Tags calibration
 // @Accept json
 // @Produce json
-// @Param logId path string true "Calibration Log ID"
-// @Param id path string true "Calibration Record ID"
+// @Param id path string true "Calibration Log ID"
 // @Success 204 "No Content"
 // @Failure 400 {object} utils.ErrorResponse
 // @Failure 404 {object} utils.ErrorResponse
 // @Failure 500 {object} utils.ErrorResponse
 // @Security BearerAuth
-// @Router /calibrationlogs/{logId}/records/{id} [delete]
+// @Router /calibrationlogs/{id} [delete]
+func (s *CalibrationService) DeleteCalibrationLogHandler(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, utils.ErrorResponse{Error: "invalid calibration log id"})
+	}
+
+	if err := s.DeleteCalibrationLog(id); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return c.JSON(http.StatusNotFound, utils.ErrorResponse{Error: "calibration log not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, utils.ErrorResponse{Error: "delete failed"})
+	}
+
+	return c.NoContent(http.StatusNoContent)
+}
+
 func (s *CalibrationService) DeleteCalibrationRecordHandler(c echo.Context) error {
 	recordId, err := uuid.Parse(c.Param("id"))
 	if err != nil {

@@ -3,9 +3,6 @@ package calibration
 import "github.com/labstack/echo/v4"
 
 func RegisterRoutes(g *echo.Group, calibrationService *CalibrationService) {
-	g.POST("/units", calibrationService.PostUnitHandler)
-	g.GET("/units", calibrationService.GetUnitsHandler)
-	g.PATCH("/units/:symbol", calibrationService.PatchUnitHandler)
 	g.POST("/formulations", calibrationService.PostFormulationHandler)
 	g.GET("/formulations", calibrationService.GetFormulationsHandler)
 	g.PATCH("/formulations/:id", calibrationService.PatchFormulationHandler)
@@ -15,6 +12,7 @@ func RegisterRoutes(g *echo.Group, calibrationService *CalibrationService) {
 	g.POST("/calibrationlogs", calibrationService.PostCalibrationLogHandler)
 	g.GET("/calibrationlogs", calibrationService.GetCalibrationLogsHandler)
 	g.GET("/calibrationlogs/:id", calibrationService.GetCalibrationLogHandler)
+	g.DELETE("/calibrationlogs/:id", calibrationService.DeleteCalibrationLogHandler)
 	g.PATCH("/calibrationlogs/:id", calibrationService.PatchCalibrationLogHandler)
 	g.POST("/calibrationlogs/:id/records", calibrationService.PostCalibrationRecordHandler)
 	g.GET("/calibrationlogs/:id/records", calibrationService.GetCalibrationRecordsHandler)
